@@ -72,3 +72,11 @@ out of the speaker.
 - **Step 2 (Jev):** the fast decision layer, learned in the OpenJev Doom app.
 - **Step 3 (Pi):** same program on the Pi; the nRF24 plugs straight into
   the Pi's GPIO, no ESP32 needed, plus a USB mic and speaker.
+
+## Sequences and Fibonacci
+
+One turn can run up to 10 tool calls, so counts and chains work: `turn left two times` calls turn_left twice, `go forward and left` calls move_forward then turn_left.
+
+`draw a Fibonacci spiral` (or just `Fibonacci`) calls the `fibonacci_spiral` tool once. It runs 1 forward, left, 2 forward, left, 3 forward, left, 5 forward, left, 8 forward, then stops — 19 forwards and 4 turns, 23 moves total. The stop after 8 is the stopping condition, and the 10-call cap stops any runaway count.
+
+Speed: the model runs with thinking off, 30-minute keep-alive (no 9.6GB reload every 5 minutes), 4096 context, temperature 0.
