@@ -31,6 +31,7 @@ instead of printing them.
 import os
 import subprocess
 import sys
+import time
 
 import numpy as np
 
@@ -56,12 +57,27 @@ WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 SYSTEM_PROMPT = """You are the voice of a small toy robot talking with kids aged 3 and 6.
 - Understand English and Marathi (and mixes of both). Always reply in the SAME language the child used.
 - Keep replies to one short sentence, playful and kind. Never scary, never rude.
-- You can make the robot do things by calling tools: move_forward, move_back, turn_left, turn_right, dance, sing, tell_story.
-- If the child asks the robot to move or do something, call the matching tool AND give a one-sentence reply.
+- You can make the robot do things by calling tools: move_forward, move_back, turn_left, turn_right, dance, sing, tell_story, fibonacci_spiral.
+- SEQUENCES: if the child asks for more than one thing, return ALL steps as MULTIPLE tool calls in a SINGLE response — one call per step, in order, up to 10 calls. Do NOT do just the first step and reply. Do NOT give a spoken reply until all steps are done. Examples:
+  - "turn left two times" -> turn_left, turn_left (both in one response)
+  - "go forward five times then turn left" -> move_forward x5, then turn_left (all 6 in one response)
+  - "turn left two times then go ahead two times then turn right and stop" -> turn_left, turn_left, move_forward, move_forward, turn_right (all 5 in one response, then reply)
+  - "go forward and left" -> move_forward, turn_left
+  - "dance and sing" -> dance, sing
+  Counts are literal: "three times" means exactly 3 calls, "five times" means exactly 5.
+- FIBONACCI: if the child says "Fibonacci", "draw Fibonacci", or "Fibonacci spiral", call fibonacci_spiral ONCE (it runs the whole 1-2-3-5-8 pattern by itself). Do not expand it yourself.
+- If the child asks the robot to move or do something, call the matching tool(s) AND give a one-sentence reply.
 - If the child just wants to chat, just reply — no tool call.
+- If the child says "stop", call no tool and reply that you stopped.
 - Never claim you can do things you cannot (no fetching things, no going outside).
 - If you are unsure what the child wants, ask one short question instead of guessing a movement.
 """
+
+# Safety caps: no turn runs more than this many tool calls, so a
+# miscounted "go forward 100 times" cannot run away.
+MAX_TOOL_CALLS_PER_TURN = 10
+# Fibonacci spiral steps (stops after 8 — that IS the stopping condition).
+FIBONACCI_STEPS = [1, 2, 3, 5, 8]
 
 TOOLS = [
     {"type": "function", "function": {"name": "move_forward", "description": "Drive the robot forward a short distance.", "parameters": {"type": "object", "properties": {}}}},
@@ -71,6 +87,7 @@ TOOLS = [
     {"type": "function", "function": {"name": "dance", "description": "Make the robot do a little dance.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "sing", "description": "Make the robot sing a song.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "tell_story", "description": "Make the robot tell a short story.", "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "fibonacci_spiral", "description": "Draw a Fibonacci spiral and STOP: forward 1, turn left, forward 2, turn left, forward 3, turn left, forward 5, turn left, forward 8, then stop. Call this once for a Fibonacci request.", "parameters": {"type": "object", "properties": {}}}},
 ]
 
 # What goes over the wire to the ESP32 bridge in step 1.
@@ -85,11 +102,25 @@ COMMAND_WIRE = {
 }
 
 
+def expand_fibonacci() -> list:
+    """1, 2, 3, 5, 8 steps, left turn between each run, stop after 8."""
+    seq = []
+    for i, n in enumerate(FIBONACCI_STEPS):
+        seq.extend(["move_forward"] * n)
+        if i < len(FIBONACCI_STEPS) - 1:
+            seq.append("turn_left")
+    return seq
+
+
 class FakeLink:
     """Step 0: no robot. Print the command instead of sending it."""
 
     def send(self, command: str) -> None:
         print(f"  [ROBOT WOULD DO] {command}  (no radio linked yet — step 1 wires this up)")
+
+    def send_sequence(self, commands: list) -> None:
+        for command in commands:
+            self.send(command)
 
 
 class SerialLink:
@@ -104,6 +135,11 @@ class SerialLink:
         wire = COMMAND_WIRE.get(command, command)
         self.ser.write((wire + "\n").encode())
         print(f"  [SENT TO ROBOT] {wire}")
+
+    def send_sequence(self, commands: list) -> None:
+        for command in commands:
+            self.send(command)
+            time.sleep(0.6)  # let each move finish before the next one
 
 
 class PushToTalkRecorder:
@@ -151,20 +187,62 @@ def speak(text: str) -> None:
 
 
 def handle_turn(text: str, messages: list, link) -> list:
-    """One user turn: Gemma (native tool calls) -> send + speak."""
+    """One user turn: Gemma (native tool calls) -> send + speak.
+
+    Loops so one turn can run a SEQUENCE: the model may return
+    several tool calls, or one per round. Capped at
+    MAX_TOOL_CALLS_PER_TURN so a bad count cannot run away.
+    Speed: think=False, keep_alive 30m (no 9.6GB reload every
+    5 minutes), small context, short replies.
+    """
     messages.append({"role": "user", "content": text})
-    try:
-        resp = ollama.chat(model=MODEL, messages=messages, tools=TOOLS)
-    except Exception as exc:
-        print(f"  Ollama error: {exc}")
-        return messages
-    msg = resp["message"]
-    for call in msg.get("tool_calls") or []:
-        name = call["function"]["name"]
-        link.send(name)
-        messages.append({"role": "tool", "content": f"{name} done"})
-    reply = (msg.get("content") or "").strip()
-    if not reply and msg.get("tool_calls"):
+    calls_done = 0
+    reply = ""
+    for _ in range(MAX_TOOL_CALLS_PER_TURN + 1):
+        try:
+            resp = ollama.chat(
+                model=MODEL,
+                messages=messages,
+                tools=TOOLS,
+                think=False,
+                keep_alive="30m",
+                options={"temperature": 0, "num_ctx": 4096, "num_predict": 512},
+            )
+        except Exception as exc:
+            print(f"  Ollama error: {exc}")
+            return messages
+        msg = resp["message"]
+        tool_calls = msg.get("tool_calls") or []
+        # Only use spoken text from a round with NO tool calls.
+        # A reply that comes with tool calls is premature — the
+        # sequence is not done yet, so do not let it end the turn.
+        if not tool_calls and msg.get("content"):
+            reply = (msg.get("content") or "").strip()
+        if not tool_calls:
+            break
+        # Keep the assistant turn (with its tool calls) in history,
+        # so the next round can continue the sequence.
+        messages.append(msg)
+        for call in tool_calls:
+            if calls_done >= MAX_TOOL_CALLS_PER_TURN:
+                break
+            name = call["function"]["name"]
+            if name == "fibonacci_spiral":
+                seq = expand_fibonacci()
+                print(f"  [FIBONACCI] 1-2-3-5-8 spiral, {len(seq)} moves, stopping after 8")
+                link.send_sequence(seq)
+                calls_done += len(seq)
+            elif name in COMMAND_WIRE:
+                link.send(name)
+                calls_done += 1
+            else:
+                print(f"  (unknown tool {name} — skipped)")
+                continue
+            messages.append({"role": "tool", "content": f"{name} done"})
+        if calls_done >= MAX_TOOL_CALLS_PER_TURN:
+            print(f"  (stopped after {MAX_TOOL_CALLS_PER_TURN} steps — safety cap)")
+            break
+    if not reply and calls_done:
         reply = "Okay!"
     if reply:
         messages.append({"role": "assistant", "content": reply})
