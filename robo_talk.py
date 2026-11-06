@@ -132,7 +132,7 @@ class PushToTalkRecorder:
 
 
 def _is_mostly_ascii(text: str) -> bool:
-    return sum(c < 128 for c in text) / max(len(text), 1) > 0.8
+    return sum(ord(c) < 128 for c in text) / max(len(text), 1) > 0.8
 
 
 def speak(text: str) -> None:
