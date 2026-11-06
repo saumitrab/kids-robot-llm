@@ -5,14 +5,21 @@ RoboTalk — Step 0: laptop voice pipeline for the kids' robot.
 What it does:
   1. You press Enter, talk, press Enter again (push-to-talk).
   2. Whisper (local) transcribes — English or Marathi, auto-detected.
-  3. Gemma 3 (local, via Ollama) decides: a robot command (tool call)
-     and/or a short spoken reply, in the SAME language you used.
+  3. Gemma 4 (local, via Ollama) decides: a robot command (native
+     tool call) and/or a short spoken reply, in the SAME language
+     you used.
   4. Step 0 has no robot yet, so the command is PRINTED
      ("[ROBOT WOULD DO] move_forward") instead of sent.
      Step 1 swaps FakeLink for SerialLink — same commands, real radio.
 
+Why Gemma 4, not Gemma 3:
+  Gemma 3 does NOT support Ollama native tool calling — every
+  gemma3 tag (4b/12b/27b) returns 400 "does not support tools".
+  Gemma 4 (e4b) does support native tools, plus vision/thinking,
+  140+ languages incl. Marathi, ~3GB download, 4-6GB RAM.
+
 Setup (see README.md):
-  - Install Ollama, then:  ollama pull gemma3:4b
+  - Install Ollama, then:  ollama pull gemma4:e4b
   - pip install -r requirements.txt
   - Run:  python3 robo_talk.py
 
@@ -43,7 +50,7 @@ except ImportError:
     ollama = None
 
 SAMPLE_RATE = 16000
-MODEL = os.environ.get("ROBOT_MODEL", "gemma3:4b")
+MODEL = os.environ.get("ROBOT_MODEL", "gemma4:e4b")
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 
 SYSTEM_PROMPT = """You are the voice of a small toy robot talking with kids aged 3 and 6.
@@ -143,6 +150,29 @@ def speak(text: str) -> None:
         pass  # not macOS — the printed reply is the fallback
 
 
+def handle_turn(text: str, messages: list, link) -> list:
+    """One user turn: Gemma (native tool calls) -> send + speak."""
+    messages.append({"role": "user", "content": text})
+    try:
+        resp = ollama.chat(model=MODEL, messages=messages, tools=TOOLS)
+    except Exception as exc:
+        print(f"  Ollama error: {exc}")
+        return messages
+    msg = resp["message"]
+    for call in msg.get("tool_calls") or []:
+        name = call["function"]["name"]
+        link.send(name)
+        messages.append({"role": "tool", "content": f"{name} done"})
+    reply = (msg.get("content") or "").strip()
+    if not reply and msg.get("tool_calls"):
+        reply = "Okay!"
+    if reply:
+        messages.append({"role": "assistant", "content": reply})
+        speak(reply)
+    # Keep history short so the small model stays fast.
+    return [messages[0]] + messages[-8:]
+
+
 def main():
     text_mode = "--text" in sys.argv
     if sd is None or WhisperModel is None or ollama is None:
@@ -183,24 +213,7 @@ def main():
             if text.lower() in ("quit", "exit", "stop"):
                 print("Bye!")
                 break
-            messages.append({"role": "user", "content": text})
-            try:
-                resp = ollama.chat(model=MODEL, messages=messages, tools=TOOLS)
-            except Exception as exc:
-                print(f"  Ollama error: {exc}")
-                continue
-            msg = resp["message"]
-            for call in msg.get("tool_calls") or []:
-                name = call["function"]["name"]
-                link.send(name)
-                messages.append({"role": "tool", "content": f"{name} done"})
-            reply = (msg.get("content") or "").strip()
-            if not reply and msg.get("tool_calls"):
-                reply = "Okay!"
-            if reply:
-                messages.append({"role": "assistant", "content": reply})
-                speak(reply)
-            messages = [messages[0]] + messages[-8:]
+            messages = handle_turn(text, messages, link)
         return
 
     print("Loading Whisper (first run downloads the model)...")
@@ -214,7 +227,6 @@ def main():
         print(f"Run:  ollama pull {MODEL}   (and make sure Ollama is running)")
         sys.exit(1)
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     print("\nReady! Press Enter, speak, press Enter again to stop. Type 'quit' to stop.\n")
     while True:
         try:
@@ -245,28 +257,7 @@ def main():
             print("Bye!")
             break
 
-        messages.append({"role": "user", "content": text})
-        try:
-            resp = ollama.chat(model=MODEL, messages=messages, tools=TOOLS)
-        except Exception as exc:
-            print(f"  Ollama error: {exc}")
-            continue
-
-        msg = resp["message"]
-        for call in msg.get("tool_calls") or []:
-            name = call["function"]["name"]
-            link.send(name)
-            messages.append({"role": "tool", "content": f"{name} done"})
-
-        reply = (msg.get("content") or "").strip()
-        if not reply and msg.get("tool_calls"):
-            reply = "Okay!"
-        if reply:
-            messages.append({"role": "assistant", "content": reply})
-            speak(reply)
-
-        # Keep history short so the small model stays fast.
-        messages = [messages[0]] + messages[-8:]
+        messages = handle_turn(text, messages, link)
 
 
 if __name__ == "__main__":
