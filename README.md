@@ -40,7 +40,7 @@ allow it, or no audio is captured. Whisper downloads its model on first use.
 | Piece | Job | Why this one |
 |---|---|---|
 | faster-whisper `small` | Speech → text, English + Marathi | Local, free, auto-detects language |
-| Ollama + Gemma 3 4B | Understands + picks the robot command | Knows Marathi; runs on the laptop; tool-calling built in |
+| Ollama + Gemma 4 E4B | Understands + picks the robot command via native tool calls | Knows Marathi (140+ languages); ~3GB download, 4–6GB RAM; tools + vision + thinking. Gemma 3 does NOT support Ollama tools — do not use gemma3:4b. |
 | macOS `say` | Spoken reply (English) | Built in, zero setup |
 | `FakeLink` | Prints the command | Step 0 has no robot; step 1 swaps in `SerialLink` |
 
