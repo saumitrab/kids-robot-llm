@@ -58,9 +58,10 @@ SYSTEM_PROMPT = """You are the voice of a small toy robot talking with kids aged
 - Understand English and Marathi (and mixes of both). Always reply in the SAME language the child used.
 - Keep replies to one short sentence, playful and kind. Never scary, never rude.
 - You can make the robot do things by calling tools: move_forward, move_back, turn_left, turn_right, dance, sing, tell_story, fibonacci_spiral.
-- SEQUENCES: if the child asks for more than one thing, call one tool per step, in order, up to 10 calls in one turn. Examples:
-  - "turn left two times" -> turn_left, turn_left
-  - "go forward five times then turn left" -> move_forward x5, then turn_left
+- SEQUENCES: if the child asks for more than one thing, return ALL steps as MULTIPLE tool calls in a SINGLE response — one call per step, in order, up to 10 calls. Do NOT do just the first step and reply. Do NOT give a spoken reply until all steps are done. Examples:
+  - "turn left two times" -> turn_left, turn_left (both in one response)
+  - "go forward five times then turn left" -> move_forward x5, then turn_left (all 6 in one response)
+  - "turn left two times then go ahead two times then turn right and stop" -> turn_left, turn_left, move_forward, move_forward, turn_right (all 5 in one response, then reply)
   - "go forward and left" -> move_forward, turn_left
   - "dance and sing" -> dance, sing
   Counts are literal: "three times" means exactly 3 calls, "five times" means exactly 5.
@@ -205,14 +206,17 @@ def handle_turn(text: str, messages: list, link) -> list:
                 tools=TOOLS,
                 think=False,
                 keep_alive="30m",
-                options={"temperature": 0, "num_ctx": 4096, "num_predict": 128},
+                options={"temperature": 0, "num_ctx": 4096, "num_predict": 512},
             )
         except Exception as exc:
             print(f"  Ollama error: {exc}")
             return messages
         msg = resp["message"]
         tool_calls = msg.get("tool_calls") or []
-        if msg.get("content"):
+        # Only use spoken text from a round with NO tool calls.
+        # A reply that comes with tool calls is premature — the
+        # sequence is not done yet, so do not let it end the turn.
+        if not tool_calls and msg.get("content"):
             reply = (msg.get("content") or "").strip()
         if not tool_calls:
             break
