@@ -1,18 +1,3 @@
-<<<<<<< /tmp/merge_run_evals.py/ours
-"""Run the tool-call sequence evals in evals/cases.json.
-
-Usage (from the repo root, Ollama running, model pulled):
-    python3 evals/run_evals.py [--cases evals/cases.json] [--out evals/results.json]
-
-Scores each case by EXACT sequence match: the captured tool calls must
-match the expected list call for call, in order, with the same repeats
-and the same final stop. Reply text is ignored for scoring, except that
-a reply claiming work the tool calls did not do is a fail (caught by
-the sequence mismatch itself — the calls are what count).
-
-Writes a results file with the model, prompt version, generation
-budget, and per-case input / expected / actual / pass.
-=======
 """The central benchmark runner.
 
 This is the benchmark, not just a test script: per-skill evals are the
@@ -44,7 +29,6 @@ Usage (from the repo root, Ollama running, model pulled):
   fix is demoted to the train set and replaced.
 - load_skill calls are handled by the runner (body injected, not
   counted as a robot command) — progressive disclosure, level 2.
->>>>>>> /tmp/merge_run_evals.py/theirs
 """
 
 import argparse
@@ -54,10 +38,7 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-<<<<<<< /tmp/merge_run_evals.py/ours
-=======
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "code" / "step0"))
->>>>>>> /tmp/merge_run_evals.py/theirs
 
 import ollama  # noqa: E402
 
@@ -65,12 +46,6 @@ import robo_talk  # noqa: E402
 
 MAX_TOOL_CALLS_PER_TURN = 10
 
-<<<<<<< /tmp/merge_run_evals.py/ours
-
-def run_one(text):
-    """Run one input through the model, capture the full tool-call list."""
-    system = robo_talk.build_system_prompt()
-=======
 # Final-state simulation: start at (0, 0) facing North.
 # move_forward/back step 1 unit along heading; turns rotate 90°.
 HEADINGS = [(0, 1), (1, 0), (0, -1), (-1, 0)]  # N, E, S, W
@@ -121,42 +96,19 @@ def run_one(model, text, with_skill=True):
     system = robo_talk.build_system_prompt()
     if not with_skill:
         system = robo_talk.SYSTEM_PROMPT
->>>>>>> /tmp/merge_run_evals.py/theirs
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": text},
     ]
     calls = []
     for _ in range(MAX_TOOL_CALLS_PER_TURN + 1):
-<<<<<<< /tmp/merge_run_evals.py/ours
-        resp = ollama.chat(
-            model=robo_talk.MODEL,
-            messages=messages,
-            tools=robo_talk.TOOLS,
-            think=False,
-            keep_alive="30m",
-            options={"temperature": 0, "num_ctx": 4096, "num_predict": 512},
-        )
-=======
         resp = chat_once(model, messages)
->>>>>>> /tmp/merge_run_evals.py/theirs
         msg = resp["message"]
         tool_calls = msg.get("tool_calls") or []
         if not tool_calls:
             break
         messages.append(msg)
         for tc in tool_calls:
-<<<<<<< /tmp/merge_run_evals.py/ours
-            calls.append(tc["function"]["name"])
-            messages.append(
-                {
-                    "role": "tool",
-                    "content": "done",
-                    "tool_name": tc["function"]["name"],
-                }
-            )
-    return calls
-=======
             fn = tc["function"]
             name = fn["name"]
             if name == "load_skill":
@@ -219,57 +171,10 @@ def discover_cases(root):
                 }
             )
     return cases
->>>>>>> /tmp/merge_run_evals.py/theirs
 
 
 def main():
     parser = argparse.ArgumentParser()
-<<<<<<< /tmp/merge_run_evals.py/ours
-    parser.add_argument("--cases", default="evals/cases.json")
-    parser.add_argument("--out", default="evals/results.json")
-    args = parser.parse_args()
-
-    data = json.loads(Path(args.cases).read_text())
-    meta = data["meta"]
-    cases = data["cases"]
-
-    results = []
-    passed = 0
-    for case in cases:
-        started = time.time()
-        actual = run_one(case["input"])
-        elapsed = round(time.time() - started, 1)
-        ok = actual == case["expected"]
-        passed += ok
-        results.append(
-            {
-                "id": case["id"],
-                "input": case["input"],
-                "expected": case["expected"],
-                "actual": actual,
-                "pass": ok,
-                "seconds": elapsed,
-            }
-        )
-        mark = "PASS" if ok else "FAIL"
-        print(f"{mark}  {case['id']}")
-        if not ok:
-            print(f"      expected: {case['expected']}")
-            print(f"      actual:   {actual}")
-
-    summary = {
-        "model": meta["model"],
-        "prompt_version": meta["prompt_version"],
-        "generation": meta["generation"],
-        "total": len(cases),
-        "passed": passed,
-        "failed": len(cases) - passed,
-        "results": results,
-    }
-    Path(args.out).write_text(json.dumps(summary, indent=2, ensure_ascii=False))
-    print(f"\n{passed}/{len(cases)} passed — results in {args.out}")
-    return 0 if passed == len(cases) else 1
-=======
     parser.add_argument("--model", default="gemma4:e4b")
     parser.add_argument("--runs", type=int, default=3)
     parser.add_argument("--skill", default=None, help="run only one skill's cases")
@@ -366,7 +271,6 @@ def main():
     print(f"\n{passed}/{len(results)} pass³ — per-skill: {summary['by_skill']}")
     print(f"results in {args.out}")
     return 0 if passed == len(results) else 1
->>>>>>> /tmp/merge_run_evals.py/theirs
 
 
 if __name__ == "__main__":
