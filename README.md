@@ -81,62 +81,19 @@ One turn can run up to 10 tool calls, so counts and chains work: `turn left two 
 
 Speed: the model runs with thinking off, 30-minute keep-alive (no 9.6GB reload every 5 minutes), 4096 context, temperature 0.
 
-<<<<<<< /tmp/merge_README.md/ours
-## Evals
-
-`evals/cases.json` holds 24 cases — single commands, repeats, multi-step
-sequences, maze escapes, Fibonacci, dance routine, chat with no command —
-in English and Marathi. Each case is one input plus the exact tool-call
-sequence it must produce, in order, with repeats counted.
-=======
 ## Evals — central benchmark + per-skill evals
 
-`evals/cases.json` is the **central benchmark**: 24 held-out cases — single
+`evals/cases.json` is the **central benchmark**: 29 held-out cases — single
 commands, repeats, multi-step sequences, maze escapes, Fibonacci, dance
-routine, chat with no command — in English and Marathi. No skill author
+routine, chat with no command, and out-of-scope requests (no tool call,
+ask instead of guessing) — in English and Marathi. No skill author
 may edit a held-out case to pass it. Each skill also has its own evals
 in `skills/<name>/evals/evals.json` (output cases + 10 trigger queries:
 should-trigger / should-not, near-misses, English + Marathi).
->>>>>>> /tmp/merge_README.md/theirs
 
 Run them (from the repo root, Ollama running, model pulled):
 
 ```bash
-<<<<<<< /tmp/merge_README.md/ours
-python3 evals/run_evals.py
-```
-
-Score is exact sequence match only — a case fails if the agent emits
-fewer calls, adds a call, reorders a call, stops early, or replies as if
-it finished work its tool calls did not do. Results (model, prompt
-version, generation budget, per-case expected vs. actual) go to
-`evals/results.json`. Re-run the full set after every prompt, model, or
-generation-budget change. When a manual test finds a sequence the set
-missed, add it as a case first, then fix it.
-
-## Teaching the robot new things — skills
-
-The robot learns new tricks from files in `skills/`, not from code
-changes. Each file is one skill: a name, when to use it, and the exact
-steps (tool calls) it means. `robo_talk.py` loads every `skills/*.md`
-file at startup and adds them to the system prompt — the LLM picks the
-matching skill by name when the child asks for it.
-
-To teach something new, add a file, e.g. `skills/treasure_hunt.md`:
-
-```markdown
-# Skill: Treasure hunt
-- **Tool:** none — use the ordinary move/turn tools.
-- **Triggers:** "treasure hunt", "find the treasure"
-- **When to use:** the child asks for a treasure hunt.
-## Steps
-1. ...
-```
-
-Current skills: `fibonacci_spiral` (the 1-2-3-5-8 spiral, stop after 8),
-`maze_escape` (follow the child's listed moves in order, stop when they
-say stop), `dance_routine` (dance, sing, dance).
-=======
 python3 evals/run_evals.py [--model gemma4:e4b] [--runs 3]
 ```
 
@@ -174,4 +131,3 @@ That log is the record the RSE-Bench finding requires: never tune a
 skill from a memory or a chat paste — tune it from the log, after
 checking the record itself is clean (input ↔ calls ↔ outcome all
 agree).
->>>>>>> /tmp/merge_README.md/theirs
