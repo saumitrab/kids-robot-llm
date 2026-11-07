@@ -1,0 +1,306 @@
+{
+  "cases": [
+    {
+      "expected": [
+        "move_forward"
+      ],
+      "id": "en-single-forward",
+      "input": "go forward",
+      "lang": "en",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "turn_left",
+        "turn_left"
+      ],
+      "id": "en-repeat-turn",
+      "input": "turn left two times",
+      "lang": "en",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "move_back",
+        "move_back"
+      ],
+      "id": "en-walk-and-back",
+      "input": "walk five steps and two steps back",
+      "lang": "en",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "turn_left",
+        "turn_left",
+        "move_forward",
+        "move_forward",
+        "turn_right"
+      ],
+      "id": "en-sequence-with-stop",
+      "input": "turn left two times then go ahead two times then turn right and stop",
+      "lang": "en",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "turn_left"
+      ],
+      "id": "en-count-then-turn",
+      "input": "go forward five times turn left",
+      "lang": "en",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "turn_right",
+        "turn_right",
+        "turn_right",
+        "move_back",
+        "move_back"
+      ],
+      "id": "en-right-three-back-two",
+      "input": "turn right three times then go backward two times",
+      "lang": "en",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "turn_right",
+        "move_forward",
+        "move_forward",
+        "turn_left",
+        "move_forward",
+        "turn_right",
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "move_forward"
+      ],
+      "id": "en-maze-escape",
+      "input": "get out of the maze: go forward 3, turn right, go forward 2, turn left, go forward 1, turn right, go forward 4, then stop",
+      "lang": "en",
+      "skill": "maze-escape"
+    },
+    {
+      "expected": [
+        "move_forward",
+        "move_forward",
+        "turn_left",
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "turn_right",
+        "move_back",
+        "turn_right",
+        "move_forward",
+        "move_forward"
+      ],
+      "id": "en-maze-dead-end",
+      "input": "go forward 2, turn left, go forward 3, turn right, go back 1, turn right, go forward 2",
+      "lang": "en",
+      "skill": "maze-escape"
+    },
+    {
+      "expected": [
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "turn_left",
+        "move_forward",
+        "move_forward",
+        "turn_left",
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "turn_right",
+        "move_forward"
+      ],
+      "id": "en-maze-long",
+      "input": "to escape, go forward 4, turn left, go forward 2, turn left, go forward 4, turn right, go forward 1, stop",
+      "lang": "en",
+      "skill": "maze-escape"
+    },
+    {
+      "expected": [
+        "dance",
+        "sing"
+      ],
+      "id": "en-dance-and-sing",
+      "input": "dance and sing",
+      "lang": "en",
+      "skill": "dance-routine"
+    },
+    {
+      "expected": [
+        "fibonacci_spiral"
+      ],
+      "id": "en-fibonacci",
+      "input": "draw a Fibonacci spiral",
+      "lang": "en",
+      "skill": "fibonacci-spiral"
+    },
+    {
+      "expected": [
+        "dance",
+        "sing",
+        "dance"
+      ],
+      "id": "en-dance-routine",
+      "input": "do a dance routine",
+      "lang": "en",
+      "skill": "dance-routine"
+    },
+    {
+      "expected": [],
+      "id": "en-chat-no-command",
+      "input": "hi robot, how are you?",
+      "lang": "en",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "tell_story"
+      ],
+      "id": "en-story",
+      "input": "tell me a story about a brave robot",
+      "lang": "en",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "move_forward"
+      ],
+      "id": "en-forward-then-stop",
+      "input": "go forward then stop",
+      "lang": "en",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "move_forward"
+      ],
+      "id": "mr-single-forward",
+      "input": "पुढे जा",
+      "lang": "mr",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "turn_left",
+        "turn_left"
+      ],
+      "id": "mr-repeat-turn",
+      "input": "दोन वेळा डावीकडे वळ",
+      "lang": "mr",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "turn_left"
+      ],
+      "id": "mr-count-then-turn",
+      "input": "पाच पावले पुढे जा आणि मग डावीकडे वळ",
+      "lang": "mr",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "move_back",
+        "move_back"
+      ],
+      "id": "mr-walk-and-back",
+      "input": "तीन पावले पुढे जा आणि दोन पावले मागे जा",
+      "lang": "mr",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "dance",
+        "sing"
+      ],
+      "id": "mr-dance-and-sing",
+      "input": "नाच आणि गा",
+      "lang": "mr",
+      "skill": "dance-routine"
+    },
+    {
+      "expected": [
+        "fibonacci_spiral"
+      ],
+      "id": "mr-fibonacci",
+      "input": "फिबोनाची सर्पिल काढ",
+      "lang": "mr",
+      "skill": "fibonacci-spiral"
+    },
+    {
+      "expected": [
+        "move_forward",
+        "move_forward",
+        "move_forward",
+        "turn_right",
+        "move_forward",
+        "move_forward",
+        "turn_left",
+        "move_forward"
+      ],
+      "id": "mr-maze-escape",
+      "input": "भूलभुलैयातून बाहेर पड: तीन पावले पुढे जा, उजवीकडे वळ, दोन पावले पुढे जा, डावीकडे वळ, एक पाऊल पुढे जा, थांब",
+      "lang": "mr",
+      "skill": "maze-escape"
+    },
+    {
+      "expected": [],
+      "id": "mr-chat-no-command",
+      "input": "तू कसा आहेस?",
+      "lang": "mr",
+      "skill": "core"
+    },
+    {
+      "expected": [
+        "tell_story"
+      ],
+      "id": "mr-story",
+      "input": "मला एका शूर रोबोटची गोष्ट सांग",
+      "lang": "mr",
+      "skill": "core"
+    }
+  ],
+  "meta": {
+    "generation": {
+      "keep_alive": "30m",
+      "num_ctx": 4096,
+      "num_predict": 512,
+      "temperature": 0,
+      "think": false
+    },
+    "how_to_run": "python3 evals/run_evals.py  (from the repo root, with Ollama running and gemma4:e4b pulled)",
+    "model": "gemma4:e4b",
+    "prompt_version": "pr4-one-shot-sequences",
+    "scoring": "exact sequence match, call for call, in order, same repeats, same final stop. A case fails if the agent emits fewer calls, adds a call, reorders a call, stops early, or replies as if it finished work its tool calls did not perform.",
+    "role": "central benchmark / held-out suite — no skill author may edit it to pass a skill"
+  }
+}

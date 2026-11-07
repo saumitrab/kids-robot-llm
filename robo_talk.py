@@ -28,9 +28,14 @@ program sends the same commands over USB serial to the ESP32 bridge
 instead of printing them.
 """
 
+import hashlib
+import json
 import os
 import subprocess
 import sys
+import time
+from datetime import datetime, timezone
+from pathlib import Path
 
 import numpy as np
 
@@ -56,12 +61,27 @@ WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 SYSTEM_PROMPT = """You are the voice of a small toy robot talking with kids aged 3 and 6.
 - Understand English and Marathi (and mixes of both). Always reply in the SAME language the child used.
 - Keep replies to one short sentence, playful and kind. Never scary, never rude.
-- You can make the robot do things by calling tools: move_forward, move_back, turn_left, turn_right, dance, sing, tell_story.
-- If the child asks the robot to move or do something, call the matching tool AND give a one-sentence reply.
+- You can make the robot do things by calling tools: move_forward, move_back, turn_left, turn_right, dance, sing, tell_story, fibonacci_spiral.
+- SEQUENCES: if the child asks for more than one thing, return ALL steps as MULTIPLE tool calls in a SINGLE response — one call per step, in order, up to 10 calls. Do NOT do just the first step and reply. Do NOT give a spoken reply until all steps are done. Examples:
+  - "turn left two times" -> turn_left, turn_left (both in one response)
+  - "go forward five times then turn left" -> move_forward x5, then turn_left (all 6 in one response)
+  - "turn left two times then go ahead two times then turn right and stop" -> turn_left, turn_left, move_forward, move_forward, turn_right (all 5 in one response, then reply)
+  - "go forward and left" -> move_forward, turn_left
+  - "dance and sing" -> dance, sing
+  Counts are literal: "three times" means exactly 3 calls, "five times" means exactly 5.
+- FIBONACCI: if the child says "Fibonacci", "draw Fibonacci", or "Fibonacci spiral", call fibonacci_spiral ONCE (it runs the whole 1-2-3-5-8 pattern by itself). Do not expand it yourself.
+- If the child asks the robot to move or do something, call the matching tool(s) AND give a one-sentence reply.
 - If the child just wants to chat, just reply — no tool call.
+- If the child says "stop", call no tool and reply that you stopped.
 - Never claim you can do things you cannot (no fetching things, no going outside).
 - If you are unsure what the child wants, ask one short question instead of guessing a movement.
 """
+
+# Safety caps: no turn runs more than this many tool calls, so a
+# miscounted "go forward 100 times" cannot run away.
+MAX_TOOL_CALLS_PER_TURN = 10
+# Fibonacci spiral steps (stops after 8 — that IS the stopping condition).
+FIBONACCI_STEPS = [1, 2, 3, 5, 8]
 
 TOOLS = [
     {"type": "function", "function": {"name": "move_forward", "description": "Drive the robot forward a short distance.", "parameters": {"type": "object", "properties": {}}}},
@@ -71,6 +91,8 @@ TOOLS = [
     {"type": "function", "function": {"name": "dance", "description": "Make the robot do a little dance.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "sing", "description": "Make the robot sing a song.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "tell_story", "description": "Make the robot tell a short story.", "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "fibonacci_spiral", "description": "Draw a Fibonacci spiral and STOP: forward 1, turn left, forward 2, turn left, forward 3, turn left, forward 5, turn left, forward 8, then stop. Call this once for a Fibonacci request.", "parameters": {"type": "object", "properties": {}}}},
+    {"type": "function", "function": {"name": "load_skill", "description": "Load a skill's full instructions before using it. Call this first when the child asks for a named skill (e.g. Fibonacci spiral, maze escape, dance routine). Argument: name, the skill name from the available-skills list.", "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "Skill name, e.g. fibonacci-spiral"}}, "required": ["name"]}}},
 ]
 
 # What goes over the wire to the ESP32 bridge in step 1.
@@ -85,11 +107,127 @@ COMMAND_WIRE = {
 }
 
 
+def expand_fibonacci() -> list:
+    """1, 2, 3, 5, 8 steps, left turn between each run, stop after 8."""
+    seq = []
+    for i, n in enumerate(FIBONACCI_STEPS):
+        seq.extend(["move_forward"] * n)
+        if i < len(FIBONACCI_STEPS) - 1:
+            seq.append("turn_left")
+    return seq
+
+
+def _skills_dir():
+    here = Path(__file__).resolve().parent
+    for cand in (here / "skills", here.parent / "skills", Path.cwd() / "skills"):
+        if cand.is_dir():
+            return cand
+    return None
+
+
+def _parse_frontmatter(text):
+    """Tiny YAML-frontmatter parser for SKILL.md (name, description,
+    metadata.version, metadata.category). No PyYAML dependency."""
+    meta = {"name": "", "description": "", "version": "", "category": ""}
+    if not text.startswith("---"):
+        return meta
+    end = text.find("\n---", 3)
+    if end < 0:
+        return meta
+    in_metadata = False
+    for line in text[3:end].splitlines():
+        if not line.strip():
+            continue
+        if line.startswith("metadata:"):
+            in_metadata = True
+            continue
+        if line and not line.startswith((" ", "\t")):
+            in_metadata = False
+        if ":" not in line:
+            continue
+        key, _, value = line.partition(":")
+        value = value.strip().strip('"').strip("'")
+        if key.strip() == "name":
+            meta["name"] = value
+        elif key.strip() == "description":
+            meta["description"] = value
+        elif in_metadata and key.strip() == "version":
+            meta["version"] = value
+        elif in_metadata and key.strip() == "category":
+            meta["category"] = value
+    return meta
+
+
+def load_skill_metadata():
+    """Progressive disclosure, level 1: name + description only.
+
+    Anthropic format: only metadata (~100 tokens/skill) is pre-loaded
+    into the system prompt. The full SKILL.md body loads on demand via
+    the load_skill tool, when the model decides a skill applies.
+    Returns a list of {name, description, version, category, path}.
+    """
+    skills_dir = _skills_dir()
+    out = []
+    if skills_dir is None:
+        return out
+    for path in sorted(skills_dir.glob("*/SKILL.md")):
+        meta = _parse_frontmatter(path.read_text())
+        if not meta["name"]:
+            meta["name"] = path.parent.name
+        meta["path"] = path
+        out.append(meta)
+    return out
+
+
+def load_skill_body(name):
+    """Progressive disclosure, level 2: full SKILL.md body, on demand."""
+    for meta in load_skill_metadata():
+        if meta["name"] == name:
+            text = meta["path"].read_text()
+            end = text.find("\n---", 3)
+            return text[end + 4:].strip() if end >= 0 else text.strip()
+    return ""
+
+
+def build_system_prompt():
+    """Base prompt + skill metadata only (name + description).
+
+    Bodies are NOT loaded here — the model loads a skill with the
+    load_skill tool when it decides one applies. Loading every body
+    up front contradicts progressive disclosure and makes every skill
+    token compete for attention.
+    """
+    skills = load_skill_metadata()
+    if not skills:
+        return SYSTEM_PROMPT
+    lines = [
+        "",
+        "## Available skills — name and description only",
+        "If the child asks for one of these by name or intent, call "
+        "load_skill with its name FIRST, then follow its steps. "
+        "Do not guess a skill's steps from its description alone.",
+    ]
+    for s in skills:
+        lines.append(f"- {s['name']}: {s['description']}")
+    return SYSTEM_PROMPT + "\n".join(lines)
+    """1, 2, 3, 5, 8 steps, left turn between each run, stop after 8."""
+    seq = []
+    for i, n in enumerate(FIBONACCI_STEPS):
+        seq.extend(["move_forward"] * n)
+        if i < len(FIBONACCI_STEPS) - 1:
+            seq.append("turn_left")
+    return seq
+
+
 class FakeLink:
     """Step 0: no robot. Print the command instead of sending it."""
 
     def send(self, command: str) -> None:
         print(f"  [ROBOT WOULD DO] {command}  (no radio linked yet — step 1 wires this up)")
+
+    def send_sequence(self, commands: list) -> None:
+        for command in commands:
+            self.send(command)
 
 
 class SerialLink:
@@ -104,6 +242,11 @@ class SerialLink:
         wire = COMMAND_WIRE.get(command, command)
         self.ser.write((wire + "\n").encode())
         print(f"  [SENT TO ROBOT] {wire}")
+
+    def send_sequence(self, commands: list) -> None:
+        for command in commands:
+            self.send(command)
+            time.sleep(0.6)  # let each move finish before the next one
 
 
 class PushToTalkRecorder:
@@ -150,22 +293,132 @@ def speak(text: str) -> None:
         pass  # not macOS — the printed reply is the fallback
 
 
+def log_turn(record):
+    """Append one run to runs/runs.jsonl — the record RSE-Bench says
+    must be clean before any skill is tuned from it.
+
+    One line per turn, JSON: timestamp, model, input, skills loaded
+    (name + version + content hash — provenance, SkillLifeBench),
+    tool calls in order, reply, success/failure is judged by the
+    caller/eval, not here. No more copy-paste from chat: the log IS
+    the record. Runs dir lives next to the repo root when found,
+    else next to this file.
+    """
+    here = Path(__file__).resolve().parent
+    root = here
+    for cand in (here, here.parent, here.parent.parent, Path.cwd()):
+        if (cand / "skills").is_dir():
+            root = cand
+            break
+    runs_dir = root / "runs"
+    runs_dir.mkdir(exist_ok=True)
+    path = runs_dir / "runs.jsonl"
+    record = {"ts": datetime.now(timezone.utc).isoformat(), "model": MODEL, **record}
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
+    return path
+
+
+def skill_provenance(name):
+    """name + version + content hash for one loaded skill."""
+    for meta in load_skill_metadata():
+        if meta["name"] == name:
+            body = load_skill_body(name)
+            return {
+                "name": name,
+                "version": meta.get("version", ""),
+                "hash": hashlib.sha256(body.encode()).hexdigest()[:12],
+            }
+    return {"name": name, "version": "", "hash": ""}
+
+
 def handle_turn(text: str, messages: list, link) -> list:
-    """One user turn: Gemma (native tool calls) -> send + speak."""
+    """One user turn: Gemma (native tool calls) -> send + speak.
+
+    Loops so one turn can run a SEQUENCE: the model may return
+    several tool calls, or one per round. Capped at
+    MAX_TOOL_CALLS_PER_TURN so a bad count cannot run away.
+    Speed: think=False, keep_alive 30m (no 9.6GB reload every
+    5 minutes), small context, short replies.
+    """
     messages.append({"role": "user", "content": text})
-    try:
-        resp = ollama.chat(model=MODEL, messages=messages, tools=TOOLS)
-    except Exception as exc:
-        print(f"  Ollama error: {exc}")
-        return messages
-    msg = resp["message"]
-    for call in msg.get("tool_calls") or []:
-        name = call["function"]["name"]
-        link.send(name)
-        messages.append({"role": "tool", "content": f"{name} done"})
-    reply = (msg.get("content") or "").strip()
-    if not reply and msg.get("tool_calls"):
+    calls_done = 0
+    reply = ""
+    executed = []  # tool calls actually sent, in order
+    skills_loaded = []
+    for _ in range(MAX_TOOL_CALLS_PER_TURN + 1):
+        try:
+            resp = ollama.chat(
+                model=MODEL,
+                messages=messages,
+                tools=TOOLS,
+                think=False,
+                keep_alive="30m",
+                options={"temperature": 0, "num_ctx": 4096, "num_predict": 512},
+            )
+        except Exception as exc:
+            print(f"  Ollama error: {exc}")
+            return messages
+        msg = resp["message"]
+        tool_calls = msg.get("tool_calls") or []
+        # Only use spoken text from a round with NO tool calls.
+        # A reply that comes with tool calls is premature — the
+        # sequence is not done yet, so do not let it end the turn.
+        if not tool_calls and msg.get("content"):
+            reply = (msg.get("content") or "").strip()
+        if not tool_calls:
+            break
+        # Keep the assistant turn (with its tool calls) in history,
+        # so the next round can continue the sequence.
+        messages.append(msg)
+        for call in tool_calls:
+            name = call["function"]["name"]
+            if name == "load_skill":
+                # Progressive disclosure, level 2: load the skill body
+                # on demand. Not a robot command — do not count it,
+                # do not send it to the robot.
+                skill_name = (call["function"].get("arguments") or {}).get("name", "")
+                body = load_skill_body(skill_name)
+                if body:
+                    skills_loaded.append(skill_provenance(skill_name))
+                messages.append(
+                    {
+                        "role": "system",
+                        "content": f"Skill {skill_name}:\n{body}"
+                        if body
+                        else f"No skill named {skill_name}.",
+                    }
+                )
+                continue
+            if calls_done >= MAX_TOOL_CALLS_PER_TURN:
+                break
+            if name == "fibonacci_spiral":
+                seq = expand_fibonacci()
+                print(f"  [FIBONACCI] 1-2-3-5-8 spiral, {len(seq)} moves, stopping after 8")
+                link.send_sequence(seq)
+                executed.extend(seq)
+                calls_done += len(seq)
+            elif name in COMMAND_WIRE:
+                link.send(name)
+                executed.append(name)
+                calls_done += 1
+            else:
+                print(f"  (unknown tool {name} — skipped)")
+                continue
+            messages.append({"role": "tool", "content": f"{name} done"})
+        if calls_done >= MAX_TOOL_CALLS_PER_TURN:
+            print(f"  (stopped after {MAX_TOOL_CALLS_PER_TURN} steps — safety cap)")
+            break
+    if not reply and calls_done:
         reply = "Okay!"
+    log_turn(
+        {
+            "input": text,
+            "skills_loaded": skills_loaded,
+            "tool_calls": executed,
+            "reply": reply,
+        }
+    )
     if reply:
         messages.append({"role": "assistant", "content": reply})
         speak(reply)
@@ -188,7 +441,7 @@ def main():
         except Exception as exc:
             print(f"Could not open {serial_port} ({exc}) — running in print-only mode.")
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": build_system_prompt()}]
 
     if text_mode:
         # Text test mode: type instead of speaking. Same Gemma brain,

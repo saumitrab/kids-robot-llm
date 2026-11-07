@@ -72,3 +72,61 @@ out of the speaker.
 - **Step 2 (Jev):** the fast decision layer, learned in the OpenJev Doom app.
 - **Step 3 (Pi):** same program on the Pi; the nRF24 plugs straight into
   the Pi's GPIO, no ESP32 needed, plus a USB mic and speaker.
+
+## Sequences and Fibonacci
+
+One turn can run up to 10 tool calls, so counts and chains work: `turn left two times` calls turn_left twice, `go forward and left` calls move_forward then turn_left.
+
+`draw a Fibonacci spiral` (or just `Fibonacci`) calls the `fibonacci_spiral` tool once. It runs 1 forward, left, 2 forward, left, 3 forward, left, 5 forward, left, 8 forward, then stops — 19 forwards and 4 turns, 23 moves total. The stop after 8 is the stopping condition, and the 10-call cap stops any runaway count.
+
+Speed: the model runs with thinking off, 30-minute keep-alive (no 9.6GB reload every 5 minutes), 4096 context, temperature 0.
+
+## Evals — central benchmark + per-skill evals
+
+`evals/cases.json` is the **central benchmark**: 24 held-out cases — single
+commands, repeats, multi-step sequences, maze escapes, Fibonacci, dance
+routine, chat with no command — in English and Marathi. No skill author
+may edit a held-out case to pass it. Each skill also has its own evals
+in `skills/<name>/evals/evals.json` (output cases + 10 trigger queries:
+should-trigger / should-not, near-misses, English + Marathi).
+
+Run them (from the repo root, Ollama running, model pulled):
+
+```bash
+python3 evals/run_evals.py [--model gemma4:e4b] [--runs 3]
+```
+
+Scoring is dual grading: (a) exact tool-call sequence, (b) final robot
+state (position + heading, simulated from the moves). A case passes
+only if both match. Headline is **pass³** — all 3 trials pass — with
+pass@3 as a secondary signal. Every trial is logged to
+`evals/runs.jsonl` (timestamp, model, case, skills loaded with name +
+version + content hash, tool calls, final state, pass/fail). Tune from
+that log: read the failing trials, add the failing input as a case
+first, then fix the skill/prompt, then re-run and compare. Never a
+single run, never copy-paste from chat.
+
+## Teaching the robot new things — skills (Anthropic format)
+
+Each skill is a folder, `skills/<name>/SKILL.md`, with YAML frontmatter
+(`name`, `description` with trigger keywords, `metadata.version`,
+`metadata.category`). `robo_talk.py` loads **only name + description**
+at startup (progressive disclosure, ~100 tokens per skill); the model
+loads the full body on demand with the `load_skill` tool when a skill
+applies. To teach something new, add a folder with a `SKILL.md` and an
+`evals/evals.json` — no code change, and a skill with no eval does not
+ship.
+
+Current skills: `fibonacci-spiral` (the 1-2-3-5-8 spiral, stop after 8),
+`maze-escape` (follow the child's listed moves in order, stop when they
+say stop), `dance-routine` (dance, sing, dance).
+
+## Run log
+
+Every turn `robo_talk.py` runs appends one JSON line to
+`runs/runs.jsonl`: timestamp, model, input, skills loaded (name +
+version + content hash — provenance), tool calls in order, reply.
+That log is the record the RSE-Bench finding requires: never tune a
+skill from a memory or a chat paste — tune it from the log, after
+checking the record itself is clean (input ↔ calls ↔ outcome all
+agree).
