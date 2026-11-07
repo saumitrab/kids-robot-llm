@@ -32,10 +32,7 @@ import os
 import subprocess
 import sys
 import time
-<<<<<<< /tmp/merge_robo_talk.py/ours
-=======
 from pathlib import Path
->>>>>>> /tmp/merge_robo_talk.py/theirs
 
 import numpy as np
 
@@ -106,9 +103,6 @@ COMMAND_WIRE = {
 }
 
 
-<<<<<<< /tmp/merge_robo_talk.py/ours
-def expand_fibonacci() -> list:
-=======
 def load_skills():
     """Teach the robot new things without changing code.
 
@@ -142,7 +136,9 @@ def build_system_prompt():
         + "A skill's steps are the exact tool calls to make, in order.\n\n"
         + skills
     )
->>>>>>> /tmp/merge_robo_talk.py/theirs
+
+
+def expand_fibonacci() -> list:
     """1, 2, 3, 5, 8 steps, left turn between each run, stop after 8."""
     seq = []
     for i, n in enumerate(FIBONACCI_STEPS):
