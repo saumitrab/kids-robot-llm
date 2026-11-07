@@ -28,19 +28,13 @@ program sends the same commands over USB serial to the ESP32 bridge
 instead of printing them.
 """
 
-<<<<<<< /tmp/merge_robo_talk.py/ours
-=======
 import hashlib
 import json
->>>>>>> /tmp/merge_robo_talk.py/theirs
 import os
 import subprocess
 import sys
 import time
-<<<<<<< /tmp/merge_robo_talk.py/ours
-=======
 from datetime import datetime, timezone
->>>>>>> /tmp/merge_robo_talk.py/theirs
 from pathlib import Path
 
 import numpy as np
@@ -98,10 +92,7 @@ TOOLS = [
     {"type": "function", "function": {"name": "sing", "description": "Make the robot sing a song.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "tell_story", "description": "Make the robot tell a short story.", "parameters": {"type": "object", "properties": {}}}},
     {"type": "function", "function": {"name": "fibonacci_spiral", "description": "Draw a Fibonacci spiral and STOP: forward 1, turn left, forward 2, turn left, forward 3, turn left, forward 5, turn left, forward 8, then stop. Call this once for a Fibonacci request.", "parameters": {"type": "object", "properties": {}}}},
-<<<<<<< /tmp/merge_robo_talk.py/ours
-=======
     {"type": "function", "function": {"name": "load_skill", "description": "Load a skill's full instructions before using it. Call this first when the child asks for a named skill (e.g. Fibonacci spiral, maze escape, dance routine). Argument: name, the skill name from the available-skills list.", "parameters": {"type": "object", "properties": {"name": {"type": "string", "description": "Skill name, e.g. fibonacci-spiral"}}, "required": ["name"]}}},
->>>>>>> /tmp/merge_robo_talk.py/theirs
 ]
 
 # What goes over the wire to the ESP32 bridge in step 1.
@@ -116,44 +107,6 @@ COMMAND_WIRE = {
 }
 
 
-<<<<<<< /tmp/merge_robo_talk.py/ours
-def load_skills():
-    """Teach the robot new things without changing code.
-
-    Each file in skills/*.md is one skill: a name, when to use it,
-    and the exact steps (tool calls) it means. To teach the robot
-    something new, add a file — no code change needed. The LLM picks
-    the matching skill by name when the child asks for it.
-    """
-    here = Path(__file__).resolve().parent
-    for cand in (here / "skills", here.parent / "skills", Path.cwd() / "skills"):
-        if cand.is_dir():
-            skills_dir = cand
-            break
-    else:
-        return ""
-    texts = []
-    for path in sorted(skills_dir.glob("*.md")):
-        texts.append(path.read_text().strip())
-    return "\n\n".join(texts)
-
-
-def build_system_prompt():
-    """Base prompt + every skill file in skills/."""
-    skills = load_skills()
-    if not skills:
-        return SYSTEM_PROMPT
-    return (
-        SYSTEM_PROMPT
-        + "\n## Robot skills — things you have been taught\n"
-        + "When the child asks for one of these skills by name, use it. "
-        + "A skill's steps are the exact tool calls to make, in order.\n\n"
-        + skills
-    )
-
-
-def expand_fibonacci() -> list:
-=======
 def expand_fibonacci() -> list:
     """1, 2, 3, 5, 8 steps, left turn between each run, stop after 8."""
     seq = []
@@ -257,7 +210,6 @@ def build_system_prompt():
     for s in skills:
         lines.append(f"- {s['name']}: {s['description']}")
     return SYSTEM_PROMPT + "\n".join(lines)
->>>>>>> /tmp/merge_robo_talk.py/theirs
     """1, 2, 3, 5, 8 steps, left turn between each run, stop after 8."""
     seq = []
     for i, n in enumerate(FIBONACCI_STEPS):
@@ -341,8 +293,6 @@ def speak(text: str) -> None:
         pass  # not macOS — the printed reply is the fallback
 
 
-<<<<<<< /tmp/merge_robo_talk.py/ours
-=======
 def log_turn(record):
     """Append one run to runs/runs.jsonl — the record RSE-Bench says
     must be clean before any skill is tuned from it.
@@ -382,7 +332,6 @@ def skill_provenance(name):
     return {"name": name, "version": "", "hash": ""}
 
 
->>>>>>> /tmp/merge_robo_talk.py/theirs
 def handle_turn(text: str, messages: list, link) -> list:
     """One user turn: Gemma (native tool calls) -> send + speak.
 
@@ -395,11 +344,8 @@ def handle_turn(text: str, messages: list, link) -> list:
     messages.append({"role": "user", "content": text})
     calls_done = 0
     reply = ""
-<<<<<<< /tmp/merge_robo_talk.py/ours
-=======
     executed = []  # tool calls actually sent, in order
     skills_loaded = []
->>>>>>> /tmp/merge_robo_talk.py/theirs
     for _ in range(MAX_TOOL_CALLS_PER_TURN + 1):
         try:
             resp = ollama.chat(
@@ -426,11 +372,6 @@ def handle_turn(text: str, messages: list, link) -> list:
         # so the next round can continue the sequence.
         messages.append(msg)
         for call in tool_calls:
-<<<<<<< /tmp/merge_robo_talk.py/ours
-            if calls_done >= MAX_TOOL_CALLS_PER_TURN:
-                break
-            name = call["function"]["name"]
-=======
             name = call["function"]["name"]
             if name == "load_skill":
                 # Progressive disclosure, level 2: load the skill body
@@ -451,22 +392,15 @@ def handle_turn(text: str, messages: list, link) -> list:
                 continue
             if calls_done >= MAX_TOOL_CALLS_PER_TURN:
                 break
->>>>>>> /tmp/merge_robo_talk.py/theirs
             if name == "fibonacci_spiral":
                 seq = expand_fibonacci()
                 print(f"  [FIBONACCI] 1-2-3-5-8 spiral, {len(seq)} moves, stopping after 8")
                 link.send_sequence(seq)
-<<<<<<< /tmp/merge_robo_talk.py/ours
-                calls_done += len(seq)
-            elif name in COMMAND_WIRE:
-                link.send(name)
-=======
                 executed.extend(seq)
                 calls_done += len(seq)
             elif name in COMMAND_WIRE:
                 link.send(name)
                 executed.append(name)
->>>>>>> /tmp/merge_robo_talk.py/theirs
                 calls_done += 1
             else:
                 print(f"  (unknown tool {name} — skipped)")
@@ -477,8 +411,6 @@ def handle_turn(text: str, messages: list, link) -> list:
             break
     if not reply and calls_done:
         reply = "Okay!"
-<<<<<<< /tmp/merge_robo_talk.py/ours
-=======
     log_turn(
         {
             "input": text,
@@ -487,7 +419,6 @@ def handle_turn(text: str, messages: list, link) -> list:
             "reply": reply,
         }
     )
->>>>>>> /tmp/merge_robo_talk.py/theirs
     if reply:
         messages.append({"role": "assistant", "content": reply})
         speak(reply)
