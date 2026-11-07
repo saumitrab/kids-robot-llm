@@ -32,6 +32,7 @@ import os
 import subprocess
 import sys
 import time
+from pathlib import Path
 
 import numpy as np
 
@@ -102,7 +103,39 @@ COMMAND_WIRE = {
 }
 
 
-def expand_fibonacci() -> list:
+def load_skills():
+    """Teach the robot new things without changing code.
+
+    Each file in skills/*.md is one skill: a name, when to use it,
+    and the exact steps (tool calls) it means. To teach the robot
+    something new, add a file — no code change needed. The LLM picks
+    the matching skill by name when the child asks for it.
+    """
+    here = Path(__file__).resolve().parent
+    for cand in (here / "skills", here.parent / "skills", Path.cwd() / "skills"):
+        if cand.is_dir():
+            skills_dir = cand
+            break
+    else:
+        return ""
+    texts = []
+    for path in sorted(skills_dir.glob("*.md")):
+        texts.append(path.read_text().strip())
+    return "\n\n".join(texts)
+
+
+def build_system_prompt():
+    """Base prompt + every skill file in skills/."""
+    skills = load_skills()
+    if not skills:
+        return SYSTEM_PROMPT
+    return (
+        SYSTEM_PROMPT
+        + "\n## Robot skills — things you have been taught\n"
+        + "When the child asks for one of these skills by name, use it. "
+        + "A skill's steps are the exact tool calls to make, in order.\n\n"
+        + skills
+    )
     """1, 2, 3, 5, 8 steps, left turn between each run, stop after 8."""
     seq = []
     for i, n in enumerate(FIBONACCI_STEPS):
@@ -266,7 +299,7 @@ def main():
         except Exception as exc:
             print(f"Could not open {serial_port} ({exc}) — running in print-only mode.")
 
-    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages = [{"role": "system", "content": build_system_prompt()}]
 
     if text_mode:
         # Text test mode: type instead of speaking. Same Gemma brain,
