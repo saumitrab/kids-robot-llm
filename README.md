@@ -80,8 +80,6 @@ One turn can run up to 10 tool calls, so counts and chains work: `turn left two 
 `draw a Fibonacci spiral` (or just `Fibonacci`) calls the `fibonacci_spiral` tool once. It runs 1 forward, left, 2 forward, left, 3 forward, left, 5 forward, left, 8 forward, then stops — 19 forwards and 4 turns, 23 moves total. The stop after 8 is the stopping condition, and the 10-call cap stops any runaway count.
 
 Speed: the model runs with thinking off, 30-minute keep-alive (no 9.6GB reload every 5 minutes), 4096 context, temperature 0.
-<<<<<<< /tmp/merge_README.md/ours
-=======
 
 ## Evals
 
@@ -126,4 +124,3 @@ To teach something new, add a file, e.g. `skills/treasure_hunt.md`:
 Current skills: `fibonacci_spiral` (the 1-2-3-5-8 spiral, stop after 8),
 `maze_escape` (follow the child's listed moves in order, stop when they
 say stop), `dance_routine` (dance, sing, dance).
->>>>>>> /tmp/merge_README.md/theirs
